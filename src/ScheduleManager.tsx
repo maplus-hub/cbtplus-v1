@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
-import {CalendarClock,Plus,RefreshCw,ShieldCheck,Trash2,KeyRound,CheckCircle2} from 'lucide-react';
+import {CalendarClock,Plus,RefreshCw,ShieldCheck,Trash2,KeyRound,CheckCircle2,Pencil,X} from 'lucide-react';
 import {supabase} from './supabase';
 
 type Period={id:string;title:string;academic_year:string;start_date:string;end_date:string;is_active:boolean};
@@ -7,7 +7,7 @@ type Cls={id:string;code:string;level:number};
 type Subject={id:string;name:string};
 type Bank={id:string;title:string;subject_id:string;class_id:string|null;owner_id:string};
 type Session={id:string;period_id:string;subject_id:string;class_id:string|null;bank_id:string|null;starts_at:string;ends_at:string;status:'draft'|'published'|'closed';instructions:string};
-type Props={period:Period|undefined;classes:Cls[];subjects:Subject[];banks:Bank[];isAdmin:boolean;onNotice:(message:string)=>void};
+type Props={period:Period|undefined;classes:Cls[];subjects:Subject[];banks:Bank[];isAdmin:boolean;onNotice:(message:string)=>void;onRefresh?:()=>Promise<void>};
 const fmt=(iso:string)=>new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'short'}).format(new Date(iso));
 const localIso=(date:string,time:string)=>new Date(`${date}T${time}:00+07:00`).toISOString();
 function readableError(error:unknown){return error instanceof Error?error.message:String(error)}
@@ -20,12 +20,14 @@ const juknis=[
  ['2026-12-03','08:00','09:30','Sosiologi / IPS Sejarah-Geografi','XI–XII / X'],['2026-12-03','10:15','11:45','SKI','Semua'],
  ['2026-12-04','07:30','09:00','Bahasa Indonesia','Semua'],['2026-12-04','09:30','11:00','PJOK','Semua']
 ];
-export default function ScheduleManager({period,classes,subjects,banks,isAdmin,onNotice}:Props){
+export default function ScheduleManager({period,classes,subjects,banks,isAdmin,onNotice,onRefresh}:Props){
  const [sessions,setSessions]=useState<Session[]>([]),[busy,setBusy]=useState(false);
  const [subject,setSubject]=useState(''),[classId,setClassId]=useState(''),[bankId,setBankId]=useState('');
  const [date,setDate]=useState('2026-11-27'),[start,setStart]=useState('07:30'),[end,setEnd]=useState('09:00');
  const [instructions,setInstructions]=useState(''),[tokenFor,setTokenFor]=useState(''),[visibleToken,setVisibleToken]=useState('');
  const [showReference,setShowReference]=useState(false);
+ const [editing,setEditing]=useState<string|null>(null);
+ const [editSubject,setEditSubject]=useState(''),[editClass,setEditClass]=useState(''),[editBank,setEditBank]=useState(''),[editDate,setEditDate]=useState(''),[editStart,setEditStart]=useState(''),[editEnd,setEditEnd]=useState(''),[editInstructions,setEditInstructions]=useState('');
  async function reload(){if(!supabase||!period)return;setBusy(true);const {data,error}=await supabase.from('exam_schedules').select('id,period_id,subject_id,class_id,bank_id,starts_at,ends_at,status,instructions').eq('period_id',period.id).order('starts_at');if(error)onNotice('Gagal memuat jadwal: '+error.message);else setSessions((data||[]) as Session[]);setBusy(false)}
  useEffect(()=>{void reload()},[period?.id]);
  const compatible=useMemo(()=>banks.filter(b=>b.subject_id===subject&&(!b.class_id||b.class_id===classId)),[banks,subject,classId]);
@@ -46,6 +48,16 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
   setBusy(true);const {error}=await supabase.rpc('set_exam_token',{p_schedule:row.id,p_token:token});setBusy(false);
   if(error)onNotice('Gagal menetapkan token: '+error.message);else{setTokenFor(row.id);setVisibleToken(token);onNotice('Token baru disimpan. Salin sebelum menutup tampilan.')}
  }
+ const wibParts=(iso:string)=>{const f=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(iso));const get=(k:string)=>f.find(v=>v.type===k)?.value||'';return {date:`${get('year')}-${get('month')}-${get('day')}`,time:`${get('hour')}:${get('minute')}`}};
+ function beginEdit(row:Session){const a=wibParts(row.starts_at),b=wibParts(row.ends_at);setEditing(row.id);setEditSubject(row.subject_id);setEditClass(row.class_id||'');setEditBank(row.bank_id||'');setEditDate(a.date);setEditStart(a.time);setEditEnd(b.time);setEditInstructions(row.instructions||'')}
+ async function saveEdit(e:FormEvent){e.preventDefault();if(!editing||!supabase||!isAdmin||busy)return;const row=sessions.find(x=>x.id===editing);if(!row||row.status!=='draft'){onNotice('Hanya jadwal draft yang dapat diedit');return}if(!editSubject||!editClass||!editDate||!editStart||!editEnd)return;
+  const starts_at=localIso(editDate,editStart),ends_at=localIso(editDate,editEnd);if(ends_at<=starts_at){onNotice('Waktu selesai harus setelah mulai');return}
+  if((period?.start_date&&editDate<period.start_date)||(period?.end_date&&editDate>period.end_date)){onNotice('Tanggal di luar periode ujian');return}
+  setBusy(true);const {error}=await supabase.from('exam_schedules').update({subject_id:editSubject,class_id:editClass,bank_id:editBank||null,starts_at,ends_at,instructions:editInstructions}).eq('id',editing).eq('status','draft');setBusy(false);
+  if(error)onNotice('Gagal mengedit jadwal: '+error.message);else{setEditing(null);onNotice('Jadwal berhasil diedit');await reload()}
+ }
+ async function importJuknis(){if(!supabase||!period||!isAdmin||busy)return;if(sessions.length){onNotice('Sudah ada jadwal; jangan menimpa periode ini.');return}if(!window.confirm('Isi jadwal aktif dari Juknis ASAS Gasal 2026/2027 untuk semua rombel? Jadwal dibuat sebagai draft.'))return;
+ setBusy(true);const {data,error}=await supabase.rpc('seed_juknis_asas_2026',{p_period:period.id});setBusy(false);if(error)onNotice('Gagal memasukkan juknis: '+error.message);else{onNotice(`${data} jadwal per rombel berhasil dibuat dari juknis.`);await reload();await onRefresh?.()}}
  const rows=sessions.filter(x=>x.status!=='closed').length;
  return <>
  <div className="pageintro"><div><h2>Jadwal & Sesi Ujian</h2><p>Jadwal per rombel, bank soal, status publikasi dan token.</p></div><span className="pill"><CalendarClock size={15}/>{period?.title||'Belum ada periode'}</span></div>
@@ -61,7 +73,16 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
  <label className="schedule-notes">Petunjuk tambahan<input value={instructions} maxLength={350} onChange={e=>setInstructions(e.target.value)} placeholder="Opsional"/></label>
  <button type="submit" disabled={!isAdmin||busy||!period} className="primary"><Plus size={16}/> Simpan Draft</button>
  </form><div className="infobox">Jam diinput dalam WIB (Asia/Jakarta) dan dikonversi ke UTC untuk database. Sesi baru selalu berstatus draft. Publikasi membutuhkan bank soal yang telah berisi soal. Dua sesi untuk rombel yang sama tidak boleh bertabrakan.</div></section>
- <section className="panel"><div className="panelhead"><div><h3>Sesi tersimpan di Supabase</h3><p>Token tidak dapat dibaca ulang. Admin bisa membuat token baru.</p></div><button onClick={()=>void reload()} className="outlinebutton" disabled={busy}><RefreshCw size={15}/> Muat ulang</button></div>
+ <section className="panel"><div className="panelhead"><div><h3>Jadwal saat ini — tersimpan di Supabase</h3><p>Token tidak dapat dibaca ulang. Admin bisa membuat token baru.</p></div><button onClick={()=>void reload()} className="outlinebutton" disabled={busy}><RefreshCw size={15}/> Muat ulang</button></div>
+ {editing&&<form className="schedule-form" onSubmit={saveEdit}><h3 className="schedule-notes">Edit Jadwal Draft</h3>
+ <label>Mata pelajaran<select required value={editSubject} onChange={e=>{setEditSubject(e.target.value);setEditBank('')}}>{subjects.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
+ <label>Rombel<select required value={editClass} onChange={e=>{setEditClass(e.target.value);setEditBank('')}}>{classes.map(v=><option key={v.id} value={v.id}>{v.code}</option>)}</select></label>
+ <label>Tanggal<input required type="date" value={editDate} onChange={e=>setEditDate(e.target.value)}/></label>
+ <label>Mulai WIB<input required type="time" value={editStart} onChange={e=>setEditStart(e.target.value)}/></label>
+ <label>Selesai WIB<input required type="time" value={editEnd} onChange={e=>setEditEnd(e.target.value)}/></label>
+ <label>Bank soal<select value={editBank} onChange={e=>setEditBank(e.target.value)}><option value="">Belum dipilih</option>{banks.filter(b=>b.subject_id===editSubject&&(!b.class_id||b.class_id===editClass)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select></label>
+ <label className="schedule-notes">Petunjuk<input maxLength={350} value={editInstructions} onChange={e=>setEditInstructions(e.target.value)}/></label>
+ <button type="submit" className="primary" disabled={busy}>Simpan Perubahan</button><button type="button" className="outlinebutton" onClick={()=>setEditing(null)}><X size={14}/> Batal</button></form>}
  <div className="scrolltable"><table><thead><tr><th>Jadwal WIB</th><th>Mapel / Rombel</th><th>Bank soal</th><th>Status</th><th>Aksi admin</th></tr></thead><tbody>
  {sessions.map(row=><tr key={row.id}><td>{fmt(row.starts_at)}<br/>s.d. {new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit'}).format(new Date(row.ends_at))}</td><td><b>{subjectName(row.subject_id)}</b><br/>{className(row.class_id)}</td><td>{banks.find(b=>b.id===row.bank_id)?.title||'Belum dipilih'}</td><td><span className={'tag '+(row.status==='published'?'green':'')}>{row.status}</span></td><td><div className="schedule-actions">{row.status==='draft'&&<>
  <select aria-label="Pilih bank soal" value={row.bank_id||''} onChange={e=>void update(row,{bank_id:e.target.value||null})} disabled={!isAdmin||busy}><option value="">Pilih bank</option>{banks.filter(b=>b.subject_id===row.subject_id&&(!b.class_id||b.class_id===row.class_id)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select>
@@ -74,7 +95,7 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
  </tbody></table></div>
  {visibleToken&&<div className="token-reveal"><b>Token baru untuk jadwal {subjectName(sessions.find(s=>s.id===tokenFor)?.subject_id||'')}:</b><code>{visibleToken}</code><button className="outlinebutton" onClick={()=>{void navigator.clipboard.writeText(visibleToken).then(()=>onNotice('Token tersalin'),()=>onNotice('Salin token secara manual'))}}>Salin token</button><button className="outlinebutton" onClick={()=>{setVisibleToken('');setTokenFor('')}}>Sembunyikan</button><small>Jangan bagikan sebelum sesi ujian. Token baru menggantikan token lama.</small></div>}
  </section>
- <section className="panel"><div className="panelhead"><div><h3>Referensi jadwal juknis</h3><p>Halaman 13 Juknis ASAS Gasal 2026/2027; hanya acuan, bukan jadwal tersimpan.</p></div><button className="outlinebutton" onClick={()=>setShowReference(!showReference)}>{showReference?'Sembunyikan':'Lihat referensi'}</button></div>
+ <section className="panel"><div className="panelhead"><div><h3>Jadwal dari Juknis ASAS Gasal 2026/2027</h3><p>Terapkan sebagai jadwal aktif periode ini, lalu edit/tambah/hapus sesuai kebutuhan (status awal draft).</p></div><button className="primary" disabled={!isAdmin||busy||!period||sessions.length>0} onClick={()=>void importJuknis()}>Terapkan Juknis</button><button className="outlinebutton" onClick={()=>setShowReference(!showReference)}>{showReference?'Sembunyikan':'Lihat referensi'}</button></div>
  {showReference&&<div className="scrolltable"><table><thead><tr><th>Tanggal</th><th>Jam WIB</th><th>Mapel</th><th>Tingkat</th></tr></thead><tbody>{juknis.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>}
  <div className="infobox">Untuk hari dengan mapel berbeda per tingkat, buat jadwal terpisah untuk masing-masing rombel. Penempatan ruang tetap mengikuti periode ujian, tidak diacak ulang.</div></section>
  </>;
