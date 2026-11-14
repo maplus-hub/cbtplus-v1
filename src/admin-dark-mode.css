@@ -1,0 +1,88 @@
+/* CBTPLUS_DARK_MODE_V183 */
+/* Ditujukan untuk dashboard admin/guru; tidak mengubah modul login pengawas/siswa. */
+html.cbtplus-admin-dark {
+ color-scheme:dark;
+ background:#0d1512;
+ color:#e9f1ec;
+}
+html.cbtplus-admin-dark body,
+html.cbtplus-admin-dark .app-shell {background:#0d1512;color:#e9f1ec}
+html.cbtplus-admin-dark .sidebar {background:#111f19;border-color:#26392f}
+html.cbtplus-admin-dark .content {background:#0d1512}
+html.cbtplus-admin-dark .brand b,
+html.cbtplus-admin-dark .userchip strong,
+html.cbtplus-admin-dark .topbar h2,
+html.cbtplus-admin-dark .pageintro h2,
+html.cbtplus-admin-dark h3,
+html.cbtplus-admin-dark h4,
+html.cbtplus-admin-dark .statcard strong,
+html.cbtplus-admin-dark .roomcard strong,
+html.cbtplus-admin-dark td b,
+html.cbtplus-admin-dark .panel b {color:#edf5ef}
+html.cbtplus-admin-dark small,
+html.cbtplus-admin-dark .pageintro p,
+html.cbtplus-admin-dark .panelhead p,
+html.cbtplus-admin-dark .sectiontitle p,
+html.cbtplus-admin-dark .methodbody p,
+html.cbtplus-admin-dark .statheading,
+html.cbtplus-admin-dark .roomcard p,
+html.cbtplus-admin-dark td,
+html.cbtplus-admin-dark th {color:#abbcb0}
+html.cbtplus-admin-dark .sidebar-section {color:#82978a}
+html.cbtplus-admin-dark .navlink {color:#b4c7ba}
+html.cbtplus-admin-dark .navlink:hover {background:#20372a;color:#f0fff3}
+html.cbtplus-admin-dark .navlink.active {background:#234733;color:#86e3ae}
+html.cbtplus-admin-dark .userchip,
+html.cbtplus-admin-dark .topbar,
+html.cbtplus-admin-dark .statusrow,
+html.cbtplus-admin-dark .settingrow,
+html.cbtplus-admin-dark footer {border-color:#2a3e32}
+html.cbtplus-admin-dark .avatar,
+html.cbtplus-admin-dark .statheading span {background:#244634;color:#80dfaa}
+html.cbtplus-admin-dark .statcard,
+html.cbtplus-admin-dark .panel,
+html.cbtplus-admin-dark .roomcard,
+html.cbtplus-admin-dark .authbox,
+html.cbtplus-admin-dark .period-pill {background:#172720;border-color:#2a3f33;box-shadow:none;color:#e6f0e9}
+html.cbtplus-admin-dark .period-pill {color:#a9ebc4}
+html.cbtplus-admin-dark .progress,
+html.cbtplus-admin-dark .segmented {background:#293c31}
+html.cbtplus-admin-dark .segmented button {color:#b2c5b7}
+html.cbtplus-admin-dark .segmented button.selected {background:#315341;color:#e7f7ed}
+html.cbtplus-admin-dark .searchbox,
+html.cbtplus-admin-dark label input,
+html.cbtplus-admin-dark label select,
+html.cbtplus-admin-dark input,
+html.cbtplus-admin-dark select,
+html.cbtplus-admin-dark textarea {background:#111e18;border-color:#365041;color:#eaf3ed}
+html.cbtplus-admin-dark input::placeholder,
+html.cbtplus-admin-dark textarea::placeholder {color:#8a9f91}
+html.cbtplus-admin-dark input:focus-visible,
+html.cbtplus-admin-dark select:focus-visible,
+html.cbtplus-admin-dark button:focus-visible,
+html.cbtplus-admin-dark textarea:focus-visible {outline:2px solid #4ed48e;outline-offset:2px}
+html.cbtplus-admin-dark th {background:#22362a;border-color:#344b3c}
+html.cbtplus-admin-dark td {border-color:#2b3e33}
+html.cbtplus-admin-dark tbody tr:hover {background:#1c3226}
+html.cbtplus-admin-dark .tag {background:#2a3a31;color:#d2e2d8}
+html.cbtplus-admin-dark .tag.green,
+html.cbtplus-admin-dark .pill {background:#194d34;color:#a9eac3}
+html.cbtplus-admin-dark .infobox {background:#1a3929;border-color:#305640;color:#b0e5c1}
+html.cbtplus-admin-dark .errorbox {background:#462b24;border-color:#714434;color:#ffd6c5}
+html.cbtplus-admin-dark .outlinebutton,
+html.cbtplus-admin-dark .uploadbutton {background:#1e3529;border-color:#385746;color:#b4ebcd}
+html.cbtplus-admin-dark .iconbutton {color:#c2d5c8}
+html.cbtplus-admin-dark .theme-toggle {border:1px solid #365041;border-radius:10px;width:37px;height:37px;flex-shrink:0}
+html.cbtplus-admin-dark .theme-toggle:hover {background:#244332}
+html.cbtplus-admin-dark .hero {background:linear-gradient(115deg,#103b2c,#16533c)}
+html.cbtplus-admin-dark .hero h1 {color:#fff}
+html.cbtplus-admin-dark .centerpage {background:radial-gradient(circle at 50% 0,#1b3b2b,#0d1512 52%)}
+html.cbtplus-admin-dark .authbox h1,
+html.cbtplus-admin-dark .authbox h2,
+html.cbtplus-admin-dark .authbox label {color:#eaf3ed}
+html.cbtplus-admin-dark .authbox p {color:#b3c6b9}
+html.cbtplus-admin-dark .authbox .alert {background:#493b22;color:#ffe1b2}
+html.cbtplus-admin-dark .scrolltable {scrollbar-color:#385946 #13231a}
+html.cbtplus-admin-dark .toast {background:#28583d}
+html.cbtplus-admin-dark .bank-open {color:#91e9b9}
+@media(max-width:760px){html.cbtplus-admin-dark .sidebar{box-shadow:12px 0 28px #03090670}}

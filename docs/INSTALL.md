@@ -1,32 +1,34 @@
-# CBTPlus v1.8.2 — Edit/Hapus Siswa & Checklist Ruang
+# CBTPlus v1.8.3 — Mode Gelap Dashboard Admin dan Guru
 
-Fitur:
-- Menu Data Siswa: tombol Edit/Hapus per baris. Perubahan NIS, nama, kelas, status dll melalui modal/panel pengeditan.
-- Penghapusan siswa diblokir UI bila punya penempatan atau riwayat ujian, dan DB FK tetap berlaku. Gunakan Nonaktif untuk siswa yang sudah mempunyai data ujian.
-- Ruang & Penempatan: pilih ruang tujuan, filter kelas dan nama, checklist banyak siswa, centang semua hasil filter.
-- Nomor kursi otomatis mengambil nomor TERKECIL yang masih kosong, tanpa mengubah kursi siswa lain.
-- Proses massal atomik dalam satu RPC; validasi kapasitas, hak admin, dan larangan mengubah siswa yang sudah mulai ujian.
-- Penempatan tetap per periode (semua hari), bukan per jadwal harian.
+Paket ini adalah PATCH **tanpa SQL/Supabase**. Ia tidak menimpa modul siswa, penempatan, bank soal, ataupun token.
 
 ## Instalasi
-1. Backup database dan folder proyek.
-2. Salin src/StudentEditPanel.tsx dan src/RoomQuickAssign.tsx ke C:\Projects\cbtplus-v1\src.
-3. Salin scripts/apply-v182.mjs ke scripts, dan SQL ke folder sql.
-4. Di Supabase SQL Editor jalankan `sql/012_bulk_room_assign_v182.sql`. Ini memodifikasi database produksi; pastikan memilih proyek yang benar.
-5. `cd C:\Projects\cbtplus-v1` lalu `node scripts/apply-v182.mjs`.
-6. `npm run build`; jika berhasil `npm run dev`. JANGAN commit dulu sebelum pengujian.
+1. Ekstrak ZIP.
+2. Salin folder `scripts` dan `src` dari ZIP ke akar proyek `C:\Projects\cbtplus-v1` (merge folder, jangan mengganti seluruh direktori).
+3. Dari PowerShell:
 
-## Uji
-- Edit nama dan NIS siswa uji; cek perubahan di daftar.
-- Coba NIS duplikat dan perhatikan penolakan database.
-- Hapus siswa tanpa relasi, lalu cek daftar. Siswa dengan ruang/ujian seharusnya ditolak.
-- Pilih satu ruang + 3 siswa, pastikan kursi terisi berurutan dan unik.
-- Centang semua hasil filter X.1, simpan lalu cek ruang dan kursi.
-- Coba penempatan melebihi kapasitas: semestinya seluruh operasi ditolak.
-- Pastikan room_assignments tetap untuk periode yang sama pada seluruh hari.
+```powershell
+cd C:\Projects\cbtplus-v1
+node scripts/apply-v183-darkmode.mjs
+npm run build
+npm run dev
+```
 
-## Perhatian
-- Ini bukan import NIS dari PDF; NIS harus diisi/verifikasi dari sumber resmi.
-- SQL hanya mengizinkan pengaturan ruang massal oleh akun Supabase dengan role admin.
-- Fitur hapus sengaja konservatif untuk melindungi relasi siswa/hasil ujian.
-- Jika `App.tsx` telah disusun berbeda, skrip berhenti tanpa mengubah file dan perlu integrasi manual.
+4. Buka halaman admin lokal sesuai URL Vite dan tekan ikon bulan di kanan atas. Tekan matahari untuk kembali ke mode terang.
+
+## Perilaku
+- Pilihan tema tersimpan sebagai `localStorage['cbtplus-admin-theme']` pada browser/perangkat itu.
+- Tema diaplikasikan hanya selama komponen dashboard admin/guru (`App.tsx`) aktif; komponen portal pengawas dan siswa tidak dimodifikasi.
+- Mendukung desktop dan tampilan responsif.
+- File backup otomatis: `src/App.tsx.before-v183-darkmode.bak` dan `src/style.css.before-v183-darkmode.bak`. Jangan commit file `.bak`.
+- Script dapat dijalankan ulang tanpa menambah tombol/CSS ganda.
+
+## Pengecekan sebelum commit
+```powershell
+git diff --check
+npm run build
+git status --short
+```
+
+## Batasan
+Patch ini menggunakan sejumlah nama class CSS dari CBTPlus sebelumnya. Jika UI telah diubah drastis atau ada komponen dengan gaya inline/warna Tailwind spesifik, sebagian elemen mungkin memerlukan penyesuaian CSS. Script menolak struktur App.tsx yang tidak dikenali alih-alih menimpa file.
