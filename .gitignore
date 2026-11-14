@@ -4,3 +4,14 @@ dist/
 .env.local
 *.log
 .DS_Store
+
+# Backup files
+*.bak
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+!.env.example
