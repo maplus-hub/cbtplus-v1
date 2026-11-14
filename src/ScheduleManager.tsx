@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
 import {CalendarClock,Plus,RefreshCw,ShieldCheck,Trash2,KeyRound,CheckCircle2,Pencil,X} from 'lucide-react';
 import {supabase} from './supabase';
+import ListToolbar from './ListToolbar'; // CBTPLUS_SORT_FILTER_V185
 
 type Period={id:string;title:string;academic_year:string;start_date:string;end_date:string;is_active:boolean};
 type Cls={id:string;code:string;level:number};
@@ -21,6 +22,8 @@ const juknis=[
  ['2026-12-04','07:30','09:00','Bahasa Indonesia','Semua'],['2026-12-04','09:30','11:00','PJOK','Semua']
 ];
 export default function ScheduleManager({period,classes,subjects,banks,isAdmin,onNotice,onRefresh}:Props){
+ // CBTPLUS_SORT_FILTER_V185: pencarian, filter, dan urut jadwal.
+ const [scheduleSearch,setScheduleSearch]=useState(''),[scheduleSubject,setScheduleSubject]=useState(''),[scheduleClass,setScheduleClass]=useState(''),[scheduleStatus,setScheduleStatus]=useState(''),[scheduleSort,setScheduleSort]=useState('tanggal_asc');
  const [sessions,setSessions]=useState<Session[]>([]),[busy,setBusy]=useState(false);
  const [subject,setSubject]=useState(''),[classId,setClassId]=useState(''),[bankId,setBankId]=useState('');
  const [date,setDate]=useState('2026-11-27'),[start,setStart]=useState('07:30'),[end,setEnd]=useState('09:00');
@@ -30,7 +33,15 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
  const [editSubject,setEditSubject]=useState(''),[editClass,setEditClass]=useState(''),[editBank,setEditBank]=useState(''),[editDate,setEditDate]=useState(''),[editStart,setEditStart]=useState(''),[editEnd,setEditEnd]=useState(''),[editInstructions,setEditInstructions]=useState('');
  async function reload(){if(!supabase||!period)return;setBusy(true);const {data,error}=await supabase.from('exam_schedules').select('id,period_id,subject_id,class_id,bank_id,starts_at,ends_at,status,instructions').eq('period_id',period.id).order('starts_at');if(error)onNotice('Gagal memuat jadwal: '+error.message);else setSessions((data||[]) as Session[]);setBusy(false)}
  useEffect(()=>{void reload()},[period?.id]);
- const compatible=useMemo(()=>banks.filter(b=>b.subject_id===subject&&(!b.class_id||b.class_id===classId)),[banks,subject,classId]);
+ // CBTPLUS_MULTICLASS_V184: daftar rombel valid tiap bank dari Supabase.
+ const [bankClassTargets,setBankClassTargets]=useState<Record<string,string[]>>({});
+ useEffect(()=>{if(!supabase)return;let canceled=false;supabase.from('bank_class_targets').select('bank_id,class_id').then(({data,error})=>{if(canceled)return;if(error){onNotice('Gagal memuat kelas bank: '+error.message);return}const grouped:Record<string,string[]>={};for(const t of data||[])(grouped[t.bank_id]??=[]).push(t.class_id);setBankClassTargets(grouped)});return()=>{canceled=true}},[supabase,period?.id]);
+ const acceptsBank=(b:Bank,subjectId:string,classId:string|null)=>{
+  if(b.subject_id!==subjectId)return false;
+  const targets=bankClassTargets[b.id]??(b.class_id?[b.class_id]:[]);
+  return targets.length===0 || (!!classId&&targets.includes(classId));
+ };
+ const compatible=useMemo(()=>banks.filter(b=>acceptsBank(b,subject,classId)),[banks,subject,classId,bankClassTargets]);
  const subjectName=(id:string)=>subjects.find(x=>x.id===id)?.name||'-';
  const className=(id:string|null)=>classes.find(x=>x.id===id)?.code||'-';
  async function create(e:FormEvent){e.preventDefault();if(!supabase||!period||!isAdmin)return;
@@ -59,6 +70,10 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
  async function importJuknis(){if(!supabase||!period||!isAdmin||busy)return;if(sessions.length){onNotice('Sudah ada jadwal; jangan menimpa periode ini.');return}if(!window.confirm('Isi jadwal aktif dari Juknis ASAS Gasal 2026/2027 untuk semua rombel? Jadwal dibuat sebagai draft.'))return;
  setBusy(true);const {data,error}=await supabase.rpc('seed_juknis_asas_2026',{p_period:period.id});setBusy(false);if(error)onNotice('Gagal memasukkan juknis: '+error.message);else{onNotice(`${data} jadwal per rombel berhasil dibuat dari juknis.`);await reload();await onRefresh?.()}}
  const rows=sessions.filter(x=>x.status!=='closed').length;
+ const scheduleDisplayRows=sessions.filter(row=>{
+  const text=[subjectName(row.subject_id),className(row.class_id),banks.find(b=>b.id===row.bank_id)?.title||'',row.status,fmt(row.starts_at)].join(' ').toLocaleLowerCase('id-ID');
+  return text.includes(scheduleSearch.trim().toLocaleLowerCase('id-ID'))&&(!scheduleSubject||row.subject_id===scheduleSubject)&&(!scheduleClass||row.class_id===scheduleClass)&&(!scheduleStatus||row.status===scheduleStatus);
+ }).sort((a,b)=>scheduleSort==='tanggal_desc'?b.starts_at.localeCompare(a.starts_at):scheduleSort==='mapel_asc'?subjectName(a.subject_id).localeCompare(subjectName(b.subject_id),'id')||a.starts_at.localeCompare(b.starts_at):scheduleSort==='kelas_asc'?className(a.class_id).localeCompare(className(b.class_id),'id',{numeric:true})||a.starts_at.localeCompare(b.starts_at):a.starts_at.localeCompare(b.starts_at));
  return <>
  <div className="pageintro"><div><h2>Jadwal & Sesi Ujian</h2><p>Jadwal per rombel, bank soal, status publikasi dan token.</p></div><span className="pill"><CalendarClock size={15}/>{period?.title||'Belum ada periode'}</span></div>
  <div className="schedule-metrics"><div className="panel"><b>{sessions.length}</b><small>Total sesi</small></div><div className="panel"><b>{sessions.filter(x=>x.status==='published').length}</b><small>Dipublikasikan</small></div><div className="panel"><b>{rows}</b><small>Sesi belum ditutup</small></div></div>
@@ -80,18 +95,19 @@ export default function ScheduleManager({period,classes,subjects,banks,isAdmin,o
  <label>Tanggal<input required type="date" value={editDate} onChange={e=>setEditDate(e.target.value)}/></label>
  <label>Mulai WIB<input required type="time" value={editStart} onChange={e=>setEditStart(e.target.value)}/></label>
  <label>Selesai WIB<input required type="time" value={editEnd} onChange={e=>setEditEnd(e.target.value)}/></label>
- <label>Bank soal<select value={editBank} onChange={e=>setEditBank(e.target.value)}><option value="">Belum dipilih</option>{banks.filter(b=>b.subject_id===editSubject&&(!b.class_id||b.class_id===editClass)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select></label>
+ <label>Bank soal<select value={editBank} onChange={e=>setEditBank(e.target.value)}><option value="">Belum dipilih</option>{banks.filter(b=>acceptsBank(b,editSubject,editClass)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select></label>
  <label className="schedule-notes">Petunjuk<input maxLength={350} value={editInstructions} onChange={e=>setEditInstructions(e.target.value)}/></label>
  <button type="submit" className="primary" disabled={busy}>Simpan Perubahan</button><button type="button" className="outlinebutton" onClick={()=>setEditing(null)}><X size={14}/> Batal</button></form>}
+ <ListToolbar title="Jadwal ujian" count={scheduleDisplayRows.length} total={sessions.length} search={scheduleSearch} onSearch={setScheduleSearch} sort={scheduleSort} onSort={setScheduleSort} sortOptions={[{value:'tanggal_asc',label:'Tanggal terawal'},{value:'tanggal_desc',label:'Tanggal terbaru'},{value:'mapel_asc',label:'Mata pelajaran A–Z'},{value:'kelas_asc',label:'Kelas A–Z'}]} filters={[{label:'Mapel',value:scheduleSubject,onChange:setScheduleSubject,options:[{value:'',label:'Semua mapel'},...subjects.map(s=>({value:s.id,label:s.name}))]},{label:'Kelas',value:scheduleClass,onChange:setScheduleClass,options:[{value:'',label:'Semua kelas'},...classes.map(c=>({value:c.id,label:c.code}))]},{label:'Status',value:scheduleStatus,onChange:setScheduleStatus,options:[{value:'',label:'Semua status'},{value:'draft',label:'Draft'},{value:'published',label:'Terbit'},{value:'closed',label:'Ditutup'}]}]}/>
  <div className="scrolltable"><table><thead><tr><th>Jadwal WIB</th><th>Mapel / Rombel</th><th>Bank soal</th><th>Status</th><th>Aksi admin</th></tr></thead><tbody>
- {sessions.map(row=><tr key={row.id}><td>{fmt(row.starts_at)}<br/>s.d. {new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit'}).format(new Date(row.ends_at))}</td><td><b>{subjectName(row.subject_id)}</b><br/>{className(row.class_id)}</td><td>{banks.find(b=>b.id===row.bank_id)?.title||'Belum dipilih'}</td><td><span className={'tag '+(row.status==='published'?'green':'')}>{row.status}</span></td><td><div className="schedule-actions">{row.status==='draft'&&<>
- <select aria-label="Pilih bank soal" value={row.bank_id||''} onChange={e=>void update(row,{bank_id:e.target.value||null})} disabled={!isAdmin||busy}><option value="">Pilih bank</option>{banks.filter(b=>b.subject_id===row.subject_id&&(!b.class_id||b.class_id===row.class_id)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select>
+ {scheduleDisplayRows.map(row=><tr key={row.id}><td>{fmt(row.starts_at)}<br/>s.d. {new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit'}).format(new Date(row.ends_at))}</td><td><b>{subjectName(row.subject_id)}</b><br/>{className(row.class_id)}</td><td>{banks.find(b=>b.id===row.bank_id)?.title||'Belum dipilih'}</td><td><span className={'tag '+(row.status==='published'?'green':'')}>{row.status}</span></td><td><div className="schedule-actions">{row.status==='draft'&&<>
+ <select aria-label="Pilih bank soal" value={row.bank_id||''} onChange={e=>void update(row,{bank_id:e.target.value||null})} disabled={!isAdmin||busy}><option value="">Pilih bank</option>{banks.filter(b=>acceptsBank(b,row.subject_id,row.class_id)).map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select>
  <button disabled={!isAdmin||busy||!row.bank_id} className="outlinebutton" onClick={()=>void update(row,{status:'published'})}><CheckCircle2 size={14}/> Terbitkan</button>
  <button disabled={!isAdmin||busy} className="outlinebutton" title="Hapus draft" onClick={()=>void remove(row)}><Trash2 size={14}/></button></>}
  {row.status==='published'&&<button className="outlinebutton" disabled={!isAdmin||busy} onClick={()=>{if(window.confirm('Tutup sesi ini secara permanen?'))void update(row,{status:'closed'})}}><ShieldCheck size={14}/> Tutup sesi</button>}
  {row.status!=='closed'&&<button className="outlinebutton" disabled={!isAdmin||busy} onClick={()=>void setToken(row)}><KeyRound size={14}/> Token baru</button>}
  </div></td></tr>)}
- {!sessions.length&&<tr><td colSpan={5} className="empty">Belum ada jadwal tersimpan. Buat draft menggunakan formulir di atas.</td></tr>}
+ {!scheduleDisplayRows.length&&<tr><td colSpan={5} className="empty">{sessions.length?'Tidak ada jadwal sesuai filter.':'Belum ada jadwal tersimpan. Buat draft menggunakan formulir di atas.'}</td></tr>}
  </tbody></table></div>
  {visibleToken&&<div className="token-reveal"><b>Token baru untuk jadwal {subjectName(sessions.find(s=>s.id===tokenFor)?.subject_id||'')}:</b><code>{visibleToken}</code><button className="outlinebutton" onClick={()=>{void navigator.clipboard.writeText(visibleToken).then(()=>onNotice('Token tersalin'),()=>onNotice('Salin token secara manual'))}}>Salin token</button><button className="outlinebutton" onClick={()=>{setVisibleToken('');setTokenFor('')}}>Sembunyikan</button><small>Jangan bagikan sebelum sesi ujian. Token baru menggantikan token lama.</small></div>}
  </section>

@@ -1,0 +1,9 @@
+/* CBTPLUS_SORT_FILTER_V185 */
+.cbt-list-toolbar{margin:12px 0 14px;padding:14px;border:1px solid var(--border,#d7e4dd);border-radius:12px;background:var(--card,#ffffff);color:inherit}
+.cbt-list-toolbar-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.cbt-list-toolbar-head span{font-size:12px;opacity:.75}
+.cbt-list-toolbar-fields{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.cbt-list-toolbar-fields label{min-width:155px;flex:1;display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600}
+.cbt-list-toolbar-fields input,.cbt-list-toolbar-fields select{width:100%;min-height:36px;border-radius:8px;border:1px solid var(--border,#cbd7cf);background:var(--card,#fff);color:inherit;padding:7px 9px;box-sizing:border-box}
+.cbt-list-toolbar-fields button{min-height:36px;white-space:nowrap}
+@media(max-width:640px){.cbt-list-toolbar-fields label{flex-basis:100%}}

@@ -8,11 +8,15 @@ type Assignment={student_id:string;period_id:string;room_id:string;seat_number:n
 type Period={id:string;title:string};
 type Props={period:Period|undefined;students:Student[];classes:Class[];rooms:Room[];assignments:Assignment[];isAdmin:boolean;onNotice:(message:string)=>void;onReload:()=>Promise<void>};
 export default function RoomQuickAssign({period,students,classes,rooms,assignments,isAdmin,onNotice,onReload}:Props){
- const [roomId,setRoomId]=useState('');const [selected,setSelected]=useState<string[]>([]);const [filter,setFilter]=useState('');const [classId,setClassId]=useState('');const [busy,setBusy]=useState(false);
+ const [roomId,setRoomId]=useState('');const [selected,setSelected]=useState<string[]>([]);const [filter,setFilter]=useState('');const [classId,setClassId]=useState('');const [busy,setBusy]=useState(false); // CBTPLUS_SORT_FILTER_V185
+ const [quickSort,setQuickSort]=useState('nama_asc'),[assignedRoomFilter,setAssignedRoomFilter]=useState('');
  useEffect(()=>{setSelected([])},[period?.id,roomId]);
  const current=useMemo(()=>assignments.filter(a=>a.period_id===period?.id),[assignments,period?.id]);
  const byStudent=useMemo(()=>new Map(current.map(a=>[a.student_id,a])),[current]);
- const visible=useMemo(()=>students.filter(s=>s.status==='Aktif'&&(!classId||s.class_id===classId)&&`${s.nis} ${s.full_name}`.toLowerCase().includes(filter.toLowerCase())).sort((a,b)=>a.full_name.localeCompare(b.full_name,'id')),[students,classId,filter]);
+ const visible=useMemo(()=>students.filter(s=>{
+  const assigned=byStudent.get(s.id)?.room_id||'';
+  return s.status==='Aktif'&&(!classId||s.class_id===classId)&&(!assignedRoomFilter||(assignedRoomFilter==='__none'?!assigned:assigned===assignedRoomFilter))&&`${s.nis} ${s.full_name}`.toLowerCase().includes(filter.toLowerCase());
+ }).sort((a,b)=>quickSort==='nama_desc'?b.full_name.localeCompare(a.full_name,'id'):quickSort==='nis_asc'?a.nis.localeCompare(b.nis,'id',{numeric:true}):quickSort==='nis_desc'?b.nis.localeCompare(a.nis,'id',{numeric:true}):a.full_name.localeCompare(b.full_name,'id')),[students,classId,filter,assignedRoomFilter,quickSort,byStudent]);
  const target=rooms.find(r=>r.id===roomId);
  const occupied=current.filter(a=>a.room_id===roomId);
  const moving=selected.filter(id=>byStudent.get(id)?.room_id!==roomId);
@@ -23,9 +27,8 @@ export default function RoomQuickAssign({period,students,classes,rooms,assignmen
   if(moving.length>free){onNotice(`Tidak cukup kursi: perlu ${moving.length}, tersedia ${free}.`);return}
   if(!window.confirm(`Tetapkan ${selected.length} siswa ke ${target?.name}? Kursi baru diisi otomatis berurutan dari yang tersedia.`))return;
   setBusy(true);
-  const ordered=visible.filter(s=>selected.includes(s.id)).map(s=>s.id);
-  // Add selected students outside the current filter deterministically.
-  selected.forEach(id=>{if(!ordered.includes(id))ordered.push(id)});
+  const ordered=students.filter(s=>selected.includes(s.id)).sort((a,b)=>a.full_name.localeCompare(b.full_name,'id')).map(s=>s.id);
+  // Urutan kursi tetap konsisten (nama A-Z), tidak bergantung pada tampilan atau filter.
   const {data,error}=await supabase.rpc('assign_students_room_bulk_v182',{p_period:period.id,p_room:roomId,p_students:ordered});
   setBusy(false);
   if(error){onNotice('Gagal menyimpan penempatan: '+error.message);return}
@@ -36,6 +39,8 @@ export default function RoomQuickAssign({period,students,classes,rooms,assignmen
   <div className="formgrid">
    <label>Ruang tujuan<select value={roomId} onChange={e=>setRoomId(e.target.value)}><option value="">-- Pilih ruang --</option>{rooms.map(r=><option key={r.id} value={r.id}>{r.name} (kapasitas {r.capacity})</option>)}</select></label>
    <label>Filter kelas<select value={classId} onChange={e=>setClassId(e.target.value)}><option value="">Semua kelas</option>{classes.map(c=><option key={c.id} value={c.id}>{c.code}</option>)}</select></label>
+   <label>Ruang saat ini<select value={assignedRoomFilter} onChange={e=>setAssignedRoomFilter(e.target.value)}><option value="">Semua ruang</option><option value="__none">Belum ditempatkan</option>{rooms.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+   <label>Urutkan<select value={quickSort} onChange={e=>setQuickSort(e.target.value)}><option value="nama_asc">Nama A–Z</option><option value="nama_desc">Nama Z–A</option><option value="nis_asc">NIS naik</option><option value="nis_desc">NIS turun</option></select></label>
    <label>Cari nama / NIS<input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Cari peserta"/></label>
   </div>
   {roomId&&<div className="infobox">{target?.name}: {occupied.length}/{target?.capacity} terisi · {free} kursi kosong · {selected.length} siswa dipilih ({moving.length} perlu kursi baru).</div>}
