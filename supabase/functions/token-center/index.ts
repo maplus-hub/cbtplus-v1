@@ -68,7 +68,7 @@ async function supervisorOverview(session:string, examDate:string) {
   const pupils=ids.length?checkDb(await adminDb.from('students').select('id,nis,full_name,class_id,status').in('id',ids)):[];
   const classIds=[...new Set(pupils.filter((s:{status:string})=>s.status==='Aktif').map((s:{class_id:string})=>s.class_id))];
   const scheduleRows=classIds.length?checkDb(await adminDb.from('exam_schedules')
-     .select('id,subject_id,class_id,starts_at,ends_at,status')
+     .select('id,subject_id,class_id,bank_id,starts_at,ends_at,status')
      .eq('period_id',scope.period_id).eq('status','published').in('class_id',classIds)
      .gte('starts_at',dayStart.toISOString()).lt('starts_at',dayEnd.toISOString())
      .order('starts_at')):[];
@@ -81,6 +81,17 @@ async function supervisorOverview(session:string, examDate:string) {
   const classes=classIds.length?checkDb(await adminDb.from('classes').select('id,code').in('id',classIds)):[];
   const attempts=scheduleIds.length && ids.length ?checkDb(await adminDb.from('exam_attempts')
     .select('id,student_id,schedule_id,status').in('schedule_id',scheduleIds).in('student_id',ids)):[];
+  // CBTPLUS_INSTANT_SUPERVISOR_V187: reveal only respondent URLs for PUBLISHED schedules in THIS room.
+  const bankIds=[...new Set(scheduleRows.map((s:{bank_id:string|null})=>s.bank_id).filter((x):x is string=>!!x))];
+  const banks=bankIds.length?checkDb(await adminDb.from('question_banks')
+    .select('id,delivery_mode,form_url').in('id',bankIds)):[];
+  const extRows=scheduleIds.length&&ids.length?checkDb(await adminDb.from('cbt_instant_supervisor_status')
+    .select('schedule_id,student_id,status,updated_at')
+    .in('schedule_id',scheduleIds).in('student_id',ids)
+    .eq('period_id',scope.period_id).eq('room_id',scope.room_id)):[];
+  const instantProgress=scheduleIds.length&&ids.length?checkDb(await adminDb.from('cbt_instant_student_progress')
+    .select('schedule_id,student_id,status,opened_at,requested_at,exited_at')
+    .in('schedule_id',scheduleIds).in('student_id',ids).eq('room_id',scope.room_id)) : [];
   const override=checkDb(await adminDb.from('cbt_room_override_tokens').select('ciphertext,rotated_at')
     .eq('period_id',scope.period_id).eq('room_id',scope.room_id).maybeSingle());
   const rooms=checkDb(await adminDb.from('exam_rooms').select('name').eq('id',scope.room_id).single());
@@ -91,8 +102,10 @@ async function supervisorOverview(session:string, examDate:string) {
       ...s,class_name:classes.find((c:{id:string})=>c.id===s.class_id)?.code,
       subject_name:subjects.find((x:{id:string})=>x.id===s.subject_id)?.name,
       token:vaultMap.has(s.id)?await unseal(vaultMap.get(s.id)!):null,
+      delivery_mode:banks.find((b:{id:string})=>b.id===(s as {bank_id?:string}).bank_id)?.delivery_mode||'internal',
+      form_url:banks.find((b:{id:string})=>b.id===(s as {bank_id?:string}).bank_id)?.form_url||null,
       student_count:pupils.filter((x:{class_id:string})=>x.class_id===s.class_id).length,
-    }))),pupils,attempts,
+    }))),pupils,attempts,instant_statuses:extRows,instant_progress:instantProgress,
     override_token:override?.ciphertext?await unseal(override.ciphertext):null,
     override_rotated_at:override?.rotated_at||null,
   };
@@ -102,6 +115,35 @@ Deno.serve(async req=>{
   if(req.method!=='POST')return reply({error:'Method not allowed'},405);
   try {
     const input=await req.json();const op=required(input.op,'Operasi');
+    // CBTPlus v1.9 -- student login NIS + lesson token. All DB RPCs require service_role.
+    if(op==='student_login') {
+      const nis=required(input.nis,'NIS'),token=required(input.token,'Token pelajaran').toUpperCase();
+      const device=required(input.device,'Identitas perangkat');
+      return reply(checkDb(await adminDb.rpc('cbt_v19_login',{p_nis:nis,p_token:token,p_device:device})));
+    }
+    // CBTPLUS_INSTANT_STUDENT_V191 -- Student actions are verified server-side with the device-bound session.
+    if(op==='student_instant_action') {
+      const session=required(input.session,'Sesi siswa'),device=required(input.device,'Perangkat');
+      const verb=required(input.action,'Aksi');
+      return reply(checkDb(await adminDb.rpc('cbt_v191_instant_action',{
+        p_session:session,p_device:device,p_action:verb,p_token:input.token||''
+      })));
+    }
+    if(op==='student_info') {
+      const data=checkDb(await adminDb.rpc('cbt_v19_verify',{p_session:required(input.session,'Sesi siswa'),p_device:required(input.device,'Perangkat')})) as Record<string,unknown>;
+      const status=checkDb(await adminDb.from('cbt_instant_student_progress')
+        .select('status,opened_at,requested_at,exited_at')
+        .eq('schedule_id',String(data.schedule_id)).eq('student_id',String(data.student_id)).maybeSingle());
+      const supervisor=checkDb(await adminDb.from('cbt_instant_supervisor_status')
+        .select('status').eq('schedule_id',String(data.schedule_id)).eq('student_id',String(data.student_id)).maybeSingle());
+      return reply({...data,student_progress:status?.status||null,supervisor_status:supervisor?.status||null});
+    }
+    if(op==='student_logout') {
+      const session=required(input.session,'Sesi siswa'),device=required(input.device,'Perangkat');
+      const info=checkDb(await adminDb.rpc('cbt_v19_verify',{p_session:session,p_device:device})) as {delivery_mode:string};
+      if(info.delivery_mode==='instant_form')return reply({error:'Gunakan konfirmasi selesai dan token izin pengawas untuk keluar'},403);
+      return reply({ok:checkDb(await adminDb.rpc('cbt_v19_logout',{p_session:session,p_device:device}))});
+    }
     if(op==='admin_options') {
       await adminOnly(req);
       const periods=checkDb(await adminDb.from('exam_periods').select('id,title,academic_year,is_active').order('start_date',{ascending:false}));
@@ -130,6 +172,15 @@ Deno.serve(async req=>{
       return reply(checkDb(await adminDb.rpc('cbt_v181_login_supervisor',{p_token:token})));
     }
     if(op==='supervisor_overview') return reply(await supervisorOverview(required(input.session,'Sesi pengawas'),required(input.exam_date,'Tanggal ujian')));
+    if(op==='supervisor_instant_mark') {
+      const session=required(input.session,'Sesi pengawas');
+      const schedule=required(input.schedule_id,'Jadwal');
+      const student=required(input.student_id,'Siswa');
+      const status=required(input.status,'Status');
+      return reply(checkDb(await adminDb.rpc('cbt_v187_mark_instant',{
+        p_session:session,p_schedule:schedule,p_student:student,p_status:status
+      })));
+    }
     if(op==='supervisor_rotate') {
       const session=required(input.session,'Sesi pengawas');await validateSupervisor(session);
       const token=randomCode(16);

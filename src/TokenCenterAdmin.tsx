@@ -14,6 +14,26 @@ async function call(op:string,args:Record<string,unknown>={}){
   const response=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','apikey':import.meta.env.VITE_SUPABASE_ANON_KEY,'Authorization':`Bearer ${jwt}`},body:JSON.stringify({op,...args})});
   const result=await response.json();if(!response.ok)throw Error(result.error||`HTTP ${response.status}`);return result;
 }
+// Clipboard fallback untuk browser yang menolak Clipboard API (mis. akses lewat HTTP LAN).
+async function copyTokenSafely(value:string):Promise<boolean>{
+  if(window.isSecureContext && navigator.clipboard?.writeText){
+    try { await navigator.clipboard.writeText(value); return true; } catch { /* gunakan fallback */ }
+  }
+  const textarea=document.createElement('textarea');
+  textarea.value=value;
+  textarea.setAttribute('readonly','');
+  textarea.style.position='fixed';
+  textarea.style.top='0';
+  textarea.style.left='-9999px';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  let copied=false;
+  try { copied=document.execCommand('copy'); } catch { copied=false; }
+  textarea.remove();
+  return copied;
+}
+
 export default function TokenCenterAdmin(){
   const [options,setOptions]=useState<Options|null>(null),[period,setPeriod]=useState(''),[room,setRoom]=useState(''),[schedule,setSchedule]=useState('');
   const [token,setToken]=useState(''),[tokenKind,setTokenKind]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -31,6 +51,16 @@ export default function TokenCenterAdmin(){
       setToken(result.token);setTokenKind(kind==='supervisor'?'Token Login Pengawas':'Token Pelajaran');
       setMessage('Token berhasil dibuat. Simpan dan bagikan hanya kepada pihak yang berhak.');
     }catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
+  }
+  async function handleCopyToken(){
+    if(!token)return;
+    const copied=await copyTokenSafely(token);
+    if(copied){
+      setMessage('Token berhasil disalin ke clipboard.');
+    }else{
+      setMessage('Browser membatasi akses clipboard. Salin token secara manual pada dialog yang muncul.');
+      window.prompt('Salin token dengan Ctrl+C, lalu Enter:',token);
+    }
   }
   return <div>
     <div className="pageintro"><div><h2>Pusat Token Ujian</h2><p>Admin menerbitkan token pengawas per ruang/periode dan token pelajaran per jadwal kelas.</p></div></div>
@@ -54,7 +84,7 @@ export default function TokenCenterAdmin(){
     {token&&<section className="panel"><h3>{tokenKind} — Baru Diterbitkan</h3>
       <p>Token ditampilkan saat pembuatan. Jangan menaruhnya di repo GitHub atau membagikan token pengawas kepada siswa.</p>
       <div style={{fontSize:26,fontWeight:800,letterSpacing:3,margin:'12px 0'}}>{token}</div>
-      <button type="button" className="outlinebutton" onClick={()=>void navigator.clipboard.writeText(token)}>Salin Token</button>
+      <button type="button" className="outlinebutton" onClick={()=>void handleCopyToken()}>Salin Token</button>
     </section>}
     {message&&<div className="infobox" role="status">{message}</div>}
     <section className="panel"><h3>Dashboard Pengawas</h3>
